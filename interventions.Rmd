@@ -1,0 +1,67 @@
+---
+title: "interventions"
+author: "Magali Blanco"
+date: "10/30/2018"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+#errors
+#install.packages("stringi", repos="http://cran.rstudio.com/", dependencies=TRUE)
+
+#install.packages("reshape2", repos="http://cran.rstudio.com/", dependencies=TRUE) 
+
+library(ggplot2)
+library(reshape2) #melt()
+
+# library(readxl)
+# Codebook_UCLA_SJ <- read_excel("C:/a. Seto RA/Data/Codebook_UCLA_SJ.xlsx")
+
+#data for Mediator1 and Mediator4
+alldata <- read.csv("C:/a. Seto RA/Data/DRAFT_all_data_wide_PA_UCLA_SJ_DO NOT SHARE.csv")
+
+keep = c(alldata$TargPopAge1 ==1 | alldata$TargPopAge2==1)
+young = alldata[keep,]
+
+
+#make long format
+# ?? get rid of na.omit() ??
+
+strategy = young[c(1:4,5:15)]
+strategy.long = melt(strategy, id.vars= c("year", "zipcode", "BeneficiariesperYear", "funder"))
+strategy.long = na.omit(strategy.long[strategy.long$value==1, c(1:5)])
+names(strategy.long)[5] = "strategyID"
+
+age = young[c(1:4,16:24)]
+age.long = melt(age, id.vars= c(1:4))
+age.long = na.omit(age.long[age.long$value==1, c(1:5)])
+names(age.long)[5] = "AgeID"
+
+ethnicity = young[c(1:4,25:32)]
+ethnicity.long = melt(ethnicity, id.vars= c(1:4))
+ethnicity.long = na.omit(ethnicity.long[ethnicity.long$value==1, c(1:5)])
+names(ethnicity.long)[5] = "ethnicityID"
+
+mediator = young[c(1:4,33:41)]
+mediator.long = melt(mediator, id.vars= c(1:4))
+mediator.long = na.omit(mediator.long[mediator.long$value==1, c(1:5)])
+names(mediator.long)[5] = "MediatorsID"
+
+young.long = merge(merge(merge(strategy.long, age.long), ethnicity.long), mediator.long)
+
+
+
+
+##plots 
+ggplot(data=young.long, aes(x=year, y=BeneficiariesperYear, colour=zipcode))+ geom_point()
+ggplot(data=young.long, aes(x=year, colour=zipcode))+ geom_histogram()
+
+ggplot(data=young.long, aes(x=year, fill=as.factor(zipcode))) + geom_histogram()
+
+
+```
+
