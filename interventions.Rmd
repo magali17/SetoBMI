@@ -6,62 +6,83 @@ output: pdf_document
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
-```
-
-```{r}
-#errors
-#install.packages("stringi", repos="http://cran.rstudio.com/", dependencies=TRUE)
-
-#install.packages("reshape2", repos="http://cran.rstudio.com/", dependencies=TRUE) 
-
 library(ggplot2)
 library(reshape2) #melt()
 
-# library(readxl)
-# Codebook_UCLA_SJ <- read_excel("C:/a. Seto RA/Data/Codebook_UCLA_SJ.xlsx")
+knitr::opts_chunk$set(echo = F)
+```
 
-#data for Mediator1 and Mediator4
-alldata <- read.csv("C:/a. Seto RA/Data/DRAFT_all_data_wide_PA_UCLA_SJ_DO NOT SHARE.csv")
+```{r data clean up}
+#upload data for Mediator1 and Mediator4
+alldata <- read.csv("Data/DRAFT_all_data_wide_PA_UCLA_SJ_DO NOT SHARE.csv")
 
+# what is “TargetPopAge0”?
 keep = c(alldata$TargPopAge1 ==1 | alldata$TargPopAge2==1)
 young = alldata[keep,]
+young$InterventionNum = seq(1:nrow(young))
+length(young)
+young = young[c(42,1:41)]
+
+#make data long format
+strategy = young[c(1:5,6:15)]
+
+# CLEAN UP AFTER ADDED INTERVENTION #
+
+strategy.long = melt(strategy, id.vars= c(1:5))
+#only keep rows w/ those interventions & get rid of rows w/ NAs
+strategy.long = strategy.long[strategy.long$value==1 & !is.na( strategy.long$value), c(1:6)]  # 55,352
+#strategy.long = na.omit(strategy.long[strategy.long$value==1, c(1:5)])
+names(strategy.long)[6] = "strategyID"
+
+age = young[c(1:5,16:24)]
+age.long = melt(age, id.vars= c(1:5))
+age.long = age.long[age.long$value==1 & !is.na(age.long$value), c(1:6)]
+names(age.long)[6] = "AgeID"
+
+ethnicity = young[c(1:5,25:32)]
+ethnicity.long = melt(ethnicity, id.vars= c(1:5))
+ethnicity.long = ethnicity.long[ethnicity.long$value==1 & !is.na(ethnicity.long$value), c(1:6)]
+names(ethnicity.long)[6] = "ethnicityID"
+
+mediator = young[c(1:5,33:41)]
+mediator.long = melt(mediator, id.vars= c(1:5))
+mediator.long = mediator.long[mediator.long$value==1 & !is.na(mediator.long$value), c(1:6)]
+names(mediator.long)[6] = "MediatorsID"
+
+#merge data
+young.long = merge(merge(merge(strategy.long, age.long, all=TRUE), ethnicity.long, all=TRUE), mediator.long, all=TRUE)
+
+```
+
+#CONTINUE HERE
+
+```{r summaries by zip}
+# calculate total interventions per zip  
+unique.zip = unique(young.long$zipcode)
+#? add TotalStrat1...2...etc?
+zip.df = data.frame(zip = unique.zip, StartYr = NA, EndYr = NA, TotalInverventions = NA, TotalBeneficiaries=NA)
+
+#for(i in 1:nrow(zip.df)){
+ 
+#? takes too many b/c repeated by group?
+   i=1
+  df = young.long[young.long$zipcode == zip.df$zip[i],]
+  zip.df$StartYr[i] = min(df$year)
+  zip.df$EndYr[i] = max(df$year)
+  zip.df$TotalInverventions[i] = nrow(df)
+#}
 
 
-#make long format
-# ?? get rid of na.omit() ??
+# calculate total beneficiaries by zip (beneficiariesPerYear*years)
 
-strategy = young[c(1:4,5:15)]
-strategy.long = melt(strategy, id.vars= c("year", "zipcode", "BeneficiariesperYear", "funder"))
-strategy.long = na.omit(strategy.long[strategy.long$value==1, c(1:5)])
-names(strategy.long)[5] = "strategyID"
+```
 
-age = young[c(1:4,16:24)]
-age.long = melt(age, id.vars= c(1:4))
-age.long = na.omit(age.long[age.long$value==1, c(1:5)])
-names(age.long)[5] = "AgeID"
-
-ethnicity = young[c(1:4,25:32)]
-ethnicity.long = melt(ethnicity, id.vars= c(1:4))
-ethnicity.long = na.omit(ethnicity.long[ethnicity.long$value==1, c(1:5)])
-names(ethnicity.long)[5] = "ethnicityID"
-
-mediator = young[c(1:4,33:41)]
-mediator.long = melt(mediator, id.vars= c(1:4))
-mediator.long = na.omit(mediator.long[mediator.long$value==1, c(1:5)])
-names(mediator.long)[5] = "MediatorsID"
-
-young.long = merge(merge(merge(strategy.long, age.long), ethnicity.long), mediator.long)
-
-
-
-
+```{r plots}
 ##plots 
-ggplot(data=young.long, aes(x=year, y=BeneficiariesperYear, colour=zipcode))+ geom_point()
-ggplot(data=young.long, aes(x=year, colour=zipcode))+ geom_histogram()
-
+# beneficiaries over time per intervention
+ggplot(data=young.long, aes(x=year, y=BeneficiariesperYear, colour=zipcode))+ geom_point(aes(alpha=0.4)) + labs(y="Beneficiaries per Year per Intervention")
+#interventions over time
 ggplot(data=young.long, aes(x=year, fill=as.factor(zipcode))) + geom_histogram()
-
 
 ```
 
