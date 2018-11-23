@@ -1,0 +1,124 @@
+---
+title: "Walk Scores for ZCTAs with Interventions"
+author: "Magali Blanco"
+date: "11/16/2018"
+output: pdf_document
+---
+#Notes
+* Walk Scores range from 0-100 and are based on walkability to amenities (not necessarily safety). [https://www.walkscore.com/methodology.shtml](https://www.walkscore.com/methodology.shtml)  
+* 2 tracts have very low Walk Scores (0 and 1) 
+* 3 ZCTAs are not in ZCTA-Census Tract Relationship file and are thus dropped
+* Walk scores for each ZCTA were calcualted using land area percents rather than total area percents (is this okay?)
+
+```{r setup, include=FALSE}
+library(ggplot2)
+library(knitr) #read_chunk() #read code from external script
+
+knitr::opts_chunk$set(echo = F)
+```
+
+#Calculate ZCTA Walk Scores from Tract Walk Scores
+Since Walk Score data is for census tracts, but our analysis will be for zip codes, we'll need a relationship file to convert between the two. We'll also need a file with a list of the ZCTAs in LA county. We'll read in these files.
+
+Since zip codes tend to be larger and cover several Census Tracts, we'll keep the percent of total land area of each 2010 ZCTA covered by each Census Tract (ZAREALANDPCT) so we can weigh Walk Scores appropriately.
+
+
+```{r}
+#translational fiel for ZCTAs & census tracts
+AllZipToTract2010 = read.csv("Data/zcta_tract_rel_10.txt")[c("ZCTA5", "TRACT", "ZAREALANDPCT")] #ZAREALANDPCT # % of ZCTA represented by a tract (1 record)
+
+#convert land area percents into fractions. We'll later use these to weigh tract-specific Walk Scores and calculate an overall Walk Score for each ZCTA.
+AllZipToTract2010$ZAREALANDfrac = AllZipToTract2010$ZAREALANDPCT/100 
+
+#walk scores
+ws.all = read.csv("Data/la-country-tract-walkscores/la-country-tract-walkscores.csv")[c("TRACTCE","walkscore")]
+
+#rename "TRACTCE" for merging
+names(ws.all)[names(ws.all) == "TRACTCE"] = "TRACT" 
+
+
+
+
+
+####### START HERE #######
+
+#ZCTAs in LA County
+#LA.ZCTAs = 
+
+#rename ___ TO ZCTA5 
+#names(LA.ZCTAs)[] = ""
+
+#merge files
+                                #merge by TRACT        #merge by ZCTA5
+LA.ZCTA.TractWS = merge(merge(AllZipToTract2010, ws.all), LA.ZCTAs )  ## deletes rows w/o matching info (e.g., from Walk Scores or ZCTAs not in LA County)
+
+```
+
+Check to see how many ZCTAs don't have Walk Scores for 100% of their land area. Here's a summary of the percent of land in each ZCTA with Walk Scores. It looks like there are some ZCTAs with a large fraction of their land with missing Walk Scores. 
+
+```{r}
+#
+ZAREALANDtotal_per_ZCTA = aggregate(ZAREALANDfrac~ZCTA5, data = LA.ZCTA.TractWS, FUN = sum)
+names(ZAREALANDtotal_per_ZCTA)[2] = "ZAREALANDtotal_per_ZCTA"
+
+LA.ZCTA.TractWS = merge(LA.ZCTA.TractWS, ZAREALANDtotal_per_ZCTA, all.x=T)
+
+summary(LA.ZCTA.TractWS$ZAREALANDtotal_per_ZCTA)
+ 
+```
+
+We'll get rid of the ZCTA where ____% of the land has a missing a Walk Score.
+#? get rid of ZCTA if > 50% of land is w/o Walk Scores?
+```{r}
+#zip with largest land area with a missing Walk Score
+no.WS = no.WS[no.WS$ZAREALANDfrac == max(no.WS$ZAREALANDfrac), "ZCTA5"] 
+#delete this zip
+ZipTractWS = ZipTractWS[!ZipTractWS$ZCTA5 %in% no.WS, ]
+
+#update zip codes with missing NAs
+update.z1 = ZipTractWS[which(is.na(ZipTractWS$walkscore)), "ZCTA5"][1]
+update.z2 = ZipTractWS[which(is.na(ZipTractWS$walkscore)), "ZCTA5"][2]
+
+ZipTractWS[ZipTractWS$ZCTA5==update.z1,]
+ZipTractWS[ZipTractWS$ZCTA5==update.z2,]
+
+```
+
+
+#Walk Scores
+Calculate weighted ZCTA walk scores. Here's a summary:
+```{r}
+ZipTractWS$WSfrac = ZipTractWS$ZAREALANDfrac * ZipTractWS$walkscore
+
+#sum fraction walk scores and round since the scale is for integers
+ZipWS = round(aggregate(WSfrac~ZCTA5, data=ZipTractWS, FUN = sum))
+names(ZipWS) = c("ZCTA", "WalkScore")
+
+
+ZipWS$WalkScore = round(ZipWS$WalkScore)
+
+summary(ZipWS$WalkScore)
+#minWS = min(ZipWS$WalkScore)
+#maxWS = max(ZipWS$WalkScore)
+
+```
+
+```{r}
+#only keep zips & variables we're interested in
+load("intervention.zips.rdata")
+#length(unique(intervention.zips)) #33 ZCTAs w/ interventions
+
+keeprows = AllZipToTract2010$ZCTA5 %in% intervention.zips
+#table(keeprows)
+
+ZipToTract2010 = AllZipToTract2010[keeprows, ]
+#length(unique(ZipToTract2010$ZCTA5)) #only 30 ZCTAs (some missing)
+
+```
+
+
+#Appendix
+```{r, ref.label=knitr::all_labels(),echo=TRUE,eval=FALSE, tidy=TRUE, tidy.opts=list(width.cutoff=60), include=T}
+
+```
+
