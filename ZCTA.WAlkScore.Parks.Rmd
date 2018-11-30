@@ -1,0 +1,241 @@
+---
+title: "ZCTA WalkScores and Park Data"
+author: "Magali Blanco"
+date: "11/29/2018"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+library(haven) #read SAS datasets
+library(corrgram) #corrgram() #correlation plots
+library(ggplot2)
+library(knitr) #read_chunk() #read code from external script
+library(reshape2) #melt()
+
+knitr::opts_chunk$set(fig.align="center", echo = F, warning = F, message = F)
+
+#set the theme for all plots
+theme_set(theme_linedraw() + theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(), legend.position="bottom")) 
+
+```
+
+#Recreational Facilites and Parks Data in Los Angeles County (LAC)
+##Methods
+We looked at the number of elementary schools, the number and area of recreation and open spaces, the number of playgrounds, the number of pocketparks and the number of neighborhood parks in each ZCTA in Los Angeles County (LAC). We converted counts into density ZCTA values by dividing that ZCTA's land area (e.g. number/mi^2^). 
+
+###?
+We deleted an outlier for the number of playgrounds per mi^2^ (274)since this seemed to be an error.
+
+We plotted the correlations between these variables.
+
+```{r}
+#Import the Parks and Recreational Facilities in L.A. County dataset.
+##get rid of variables with buffers since Walk Scores are specifically for ZCTAs and do not include buffers
+rec <- read_sas("Data/rec_zcta_16.sas7bdat", NULL)[-c(4, 7, 9, 11, 13)]
+
+#calculate density values based on a ZCTA's area
+##convert from ft2 to mi2
+ft2.per.mi2 = 2.788e+7
+rec[3:length(rec)] = apply(rec[3:length(rec)], 2, function(x) x/rec$ALAND10*ft2.per.mi2) 
+##convert land from ft2 to mi2
+rec$ALAND10 = rec$ALAND10/ft2.per.mi2
+
+rec = rec[c(1:3, 8, 4:7)]
+
+#rename columns
+names(rec) = c("ZCTA", "land.mi2", "pub.elem.schl.per.mi2", "rec.open.space.per.mi2", "ft2.of.rec.open.space.per.mi2", "playg.per.mi2", "pocketparks.per.mi2", "neighparks.per.mi2")
+```
+
+##Results
+
+The variblae distribution plots show some high values for some of the park variables.
+```{r}
+#make rec long format so we can plot variable distributions
+rec.long = melt(rec[-c(1:2)])
+
+rec.plots = ggplot(data=rec.long, aes(x=value, fill=variable)) + geom_density() 
+
+rec.plots + facet_wrap(~variable, scales = "free") + labs(title = "Density Plots of Variable Distributions")  
+
+```
+
+These are the same plots on the log scale.
+```{r}
+rec.plots + facet_wrap(~variable, scales = "free") + scale_x_continuous(trans='log10') + labs(title = "Density Plots of Variable Distributions", subtitle = "x-axis is on the log scale")
+```
+
+We see a negative correlation between public elementary schools and the area of recreational and open space facilities. We see a positive association between playgrounds and pocketparks, as well as between playgrounds and neighborhood parks. 
+
+There is no strong association between the number and the area of recreational and open spaces within a ZCTA.
+
+Correlations between variables in the park dataset (pocketparks outlier included).
+```{r}
+corrgram(rec[-c(1,2)], lower.panel=panel.pie, upper.panel=panel.pts)
+
+max.pocketparks = max(rec$pocketparks.per.mi2)
+```
+
+Correlations between variables in the park dataset (pocketparks outlier not included).
+```{r}
+#check if high correlation between playgrounds and picketparks is b/c of outliers. Most of the data seems to be low? 
+#take out the maximum value for playgrounds and pocketparks (they have the same value)
+df = rec[rec$playg.per.mi2 != max(rec$playg.per.mi2),]  
+
+corrgram(df[-c(1:2)], lower.panel=panel.pie, upper.panel=panel.pts)
+
+# #ggplot(data=df, aes(x=playg.per.mi2, y= pocketparks.per.mi2)) + geom_point(alpha=0.3)
+# 
+# #boxplot of playgrounds  
+# ggplot(data=rec, aes(y=playg.per.mi2)) + geom_boxplot() + scale_y_continuous(trans='log10')
+# 
+# ggplot(data=rec, aes(y=pocketparks.per.mi2 )) + geom_boxplot() + scale_y_continuous(trans='log10')
+```
+
+
+
+#Walk Score Data for LAC
+
+##Notes
+* Walk Scores range from 0-100 and are based on walkability to amenities (not necessarily safety). [https://www.walkscore.com/methodology.shtml](https://www.walkscore.com/methodology.shtml)  
+* Estimated ZCTA Walk Scores are estimated only from Census Tracts within LAC, so they are only  represenative of LAC 
+
+
+##Methods
+We converted Census Tract Walk Scores to ZCTA Walk Scores since our analysis will be at the zip code level. We used a translational file for ZCTAs and Census Tracts to convert between the two. Only ZCTAs in LAC were used.
+
+Since ZCTAs tend to be larger than Census Tracts, we used the percent of total land area for each 2010 ZCTA that was covered by each Census Tract to weigh Census Tract Walk Scores appropriately.
+
+The Census Tract Shapefile has Walk Scores for all Census Tracts within LAC, so we were not worried about missing values. 
+
+```{r delete}
+#ZCTAs with Walk Scores for less than 25% of the total land area were dropped. If Walk Scores for ZCTAs were available for 25% or more, but less than 100% of the total land, only those Walk Scores were used to calculate a ZCTA walk score. 
+
+```
+
+
+```{r}
+#1. translational fiel for ZCTAs & census tracts
+AllZipToTract2010 = read.csv("Data/zcta_tract_rel_10.txt")[c("ZCTA5", "TRACT", "ZAREALANDPCT")] ##ZAREALANDPCT # % of ZCTA represented by a tract (1 record)
+
+##convert land area percents into fractions. We'll later use these to weigh tract-specific Walk Scores and calculate an overall Walk Score for each ZCTA.
+AllZipToTract2010$ZAREALANDfrac = AllZipToTract2010$ZAREALANDPCT/100 
+
+#only keep zips in LAC: 90001, 93591
+AllZipToTract2010 = AllZipToTract2010[AllZipToTract2010$ZCTA5 >= 90001 & AllZipToTract2010$ZCTA5 <= 93591,]
+
+#2. walk scores
+ws.all = read.csv("Data/la-country-tract-walkscores/la-country-tract-walkscores.csv")[c("TRACTCE","walkscore")]
+
+##rename "TRACTCE" for merging
+names(ws.all)[names(ws.all) == "TRACTCE"] = "TRACT" 
+##it looks like one Tract has a missing value in this dataset even thought it reads "0" in the shapefile. We'll manually add this value in. 
+ws.all[ws.all$TRACT ==599100, "walkscore"] = 0
+
+# merge Walk Scores by TRACT                                        
+WalkScores = merge(ws.all, AllZipToTract2010, all.x=T)
+#only keep Walk Scores in LAC
+#WalkScores = merge(WalkScores, LA.zips)  
+
+```
+
+
+```{r}
+#Check to see how many ZCTAs don't have Walk Scores for 100% of their land area. Here's a summary of the percent of land in each ZCTA with Walk Scores. It looks like there are a few ZCTAs that have a fraction of their land with missing Walk Scores. 
+
+##note: it may be b/c some zips may be mostly outside of LAC. Looking at the tract shapefile, it looks like there are Walk Scores for every tract in LAC. So we won't worry about eliminating some ZCTA's that "look" like they have little land coverage
+
+
+ZAREALANDtotal_per_ZCTA = aggregate(ZAREALANDfrac~ZCTA5, data = WalkScores, FUN = sum)
+names(ZAREALANDtotal_per_ZCTA)[2] = c("LandFrac_per_ZCTA")
+#fraction of land in a ZCTA w/o a Walk Score
+ZAREALANDtotal_per_ZCTA$MissingLandFrac_per_ZCTA = 1 - ZAREALANDtotal_per_ZCTA$LandFrac_per_ZCTA
+#convert negative numbers to 0
+ZAREALANDtotal_per_ZCTA$MissingLandFrac_per_ZCTA = ifelse(ZAREALANDtotal_per_ZCTA$MissingLandFrac_per_ZCTA < 0, 0, ZAREALANDtotal_per_ZCTA$MissingLandFrac_per_ZCTA)
+
+WalkScores = merge(WalkScores, ZAREALANDtotal_per_ZCTA, all.x=T)
+
+#summary(WalkScores$LandFrac_per_ZCTA)
+
+# quant = 0.98
+# ZCTAs.less.than.quant = length(unique(WalkScores$ZCTA5[WalkScores$LandFrac_per_ZCTA < quant]))
+# 
+# min.land = 0.25 
+# 
+# num.min = nrow(WalkScores[WalkScores$LandFrac_per_ZCTA < min.land,])
+
+```
+
+##Results
+
+
+```{r delete}
+# There were `r ZCTAs.less.than.quant` unique ZCTAs who's land area coverage of Walk Scores was less than `r paste0(quant*100, "%")`.   
+# 
+# We dropped `r num.min` ZCTAs for which we have Walk Scores for less than `r paste0(min.land*100, "%") ` of their total land area.  
+
+#get rid of ZCTA if > 25% of land is w/o Walk Scores
+#WalkScores = WalkScores[WalkScores$LandFrac_per_ZCTA >= min.land,]
+
+WalkScores$ratio = NA #ratio comparing diff land areas within a ZCTA
+WalkScores$ZAreaFracAdjusted = NA
+
+#### upweigh tract Walk Scores within a ZCTA when there are missing tract values by proportionally by land area (AKA only use available Walk Scores to calculate a weighted Walk Score value)
+unique.ZCTA = unique(WalkScores$ZCTA5)
+
+counter = data.frame()
+
+for(i in 1:length(unique.ZCTA)){
+  df = WalkScores[WalkScores$ZCTA5== unique.ZCTA[i],]
+  df$ratio = df$ZAREALANDfrac/min(df$ZAREALANDfrac)
+  #proportional value by which each tract should be upweighted, based on land area
+  adjust = (df$MissingLandFrac_per_ZCTA/sum(df$ratio))*df$ratio
+  df$ZAreaFracAdjusted = df$ZAREALANDfrac + adjust
+  counter = rbind(counter, df)
+}
+
+WalkScores = counter #df w/ adjusted fractions
+
+```
+
+```{r CalculateWalkScores}
+#Calculate weighted ZCTA walk scores. 
+
+#multiply tract walk scores by their weighted land area fraction
+WalkScores$WSfrac = WalkScores$ZAreaFracAdjusted * WalkScores$walkscore
+
+#sum fraction walk scores and round since the scale is for integers
+ZCTA.WalkScores = aggregate(cbind(WSfrac, ZAreaFracAdjusted) ~ ZCTA5 , data=WalkScores, FUN = sum)
+ZCTA.WalkScores = round(ZCTA.WalkScores)
+#check that ZAreaFracAdjusted values all add up to one (Walk Scores were weighted properly). Looks good.
+#summary(ZCTA.WalkScores$ZAreaFracAdjusted)
+ZCTA.WalkScores = ZCTA.WalkScores[1:2]
+names(ZCTA.WalkScores) = c("ZCTA", "WalkScore")
+```
+
+```{r WalkScorePlot}
+#Histogram of Walk Scores for ZCTAs in L.A. County 
+ggplot(data=ZCTA.WalkScores, aes(x=WalkScore)) + geom_histogram() + labs(y = "Unique ZCTAs", title = "Histogram of Walk Scores for ZCTAs in L.A. County")
+
+#summary(ZCTA.WalkScores$WalkScore)
+
+```
+
+###? Edmund: rec includes the outlier?
+```{r merge}
+#merge walk score data with park data
+WalkScores.Parks = merge(ZCTA.WalkScores, rec, all.x = T)
+
+#make names ArcMap friendly (ArcMap doesn't like periods)
+names(WalkScores.Parks) = c("ZCTA", "WalkScore", "land_mi2", "PES_mi2", "rec_mi2", "ft2_rec_mi2", "playg_mi2", "pocketparks_mi2", "neighparks_mi2")
+write.csv(x =WalkScores.Parks, file = "Data/WalkScores.Parks.by.ZCTA.2.csv", row.names = F)
+
+```
+
+ 
+
+\newpage
+#Appendix
+```{r, ref.label=knitr::all_labels(),echo=TRUE,eval=FALSE, tidy=TRUE, tidy.opts=list(width.cutoff=60), include=T}
+
+```
+
